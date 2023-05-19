@@ -1,0 +1,7 @@
+@workstations = ["ASSR", "GE@"]
+
+GET https://localhost:7088/products
+
+###
+
+POST https://localhost:7088/supply{{workstations}}

@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: planning
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: planning
+  template:
+    metadata:
+      labels:
+        app: planning
+    spec:
+      containers:
+      - name: planning
+        image: planning
+        resources:
+          limits:
+            memory: "300Mi"
+            cpu: "100m"
+      imagePullSecrets:
+        - name: secret-azure-registry
+      nodeSelector:
+        node-group: application
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: planning-service
+  namespace: observability
+spec:
+  selector: 
+    app: planning
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:    
+    kubernetes.io/ingress.class: nginx    
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  name: planning-ingress
+  namespace: observability
+spec:
+  rules:
+  - host: planning.binesty.net
+    http:
+      paths:
+      - path: /hangfire
+        pathType: Prefix
+        backend:
+          service:
+            name: planning-service
+            port:
+              number: 80
+---

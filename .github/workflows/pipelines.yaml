@@ -1,0 +1,89 @@
+name: pipelines
+on:
+  push:
+    branches:
+      - main 
+
+jobs:
+  build:  
+    runs-on: ubuntu-latest
+    name: build
+    steps:
+    - uses: actions/checkout@v3
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v2
+      with:
+        dotnet-version: 6.0.x     
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build --no-restore
+
+  test:
+    runs-on: ubuntu-latest
+    name: test
+    needs: build
+    steps:
+    - uses: actions/checkout@v3
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v2
+      with:
+        dotnet-version: 6.0.x
+
+    - name: Test
+      run: dotnet test --no-build --verbosity normal 
+
+  release:
+    runs-on: ubuntu-latest
+    name: release     
+    needs: test
+    steps:
+      - name: Chekout
+        uses: actions/checkout@v3
+
+      - name: Login on azure container registry
+        uses: azure/docker-login@v1
+        with:
+          login-server: binesty.azurecr.io
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Push images registry
+        run: |
+          docker build -t binesty.azurecr.io/manufacturing:${{ github.sha }} -f ./Manufacturing/Dockerfile .
+          docker push binesty.azurecr.io/manufacturing:${{ github.sha }}
+
+          docker build -t binesty.azurecr.io/planning:${{ github.sha }} -f ./Planning/Dockerfile .          
+          docker push binesty.azurecr.io/planning:${{ github.sha }}
+
+          docker build -t binesty.azurecr.io/api:${{ github.sha }} -f ./API/Dockerfile .          
+          docker push binesty.azurecr.io/api:${{ github.sha }}
+
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    needs: release
+    steps:
+      - name: Chekout
+        uses: actions/checkout@v3
+
+      - name: Kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Update Kubernetes
+        run: |
+          cd Kubernetes
+          kustomize edit set image manufacturing=binesty.azurecr.io/manufacturing:${{ github.sha }}
+          kustomize edit set image planning=binesty.azurecr.io/planning:${{ github.sha }}
+          kustomize edit set image api=binesty.azurecr.io/api:${{ github.sha }}
+
+      - name: Commit image tag version 
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "deploy-action"
+          git commit -am '${{ github.event.head_commit.message }}'
+      
+      - name: Push changes
+        uses: ad-m/github-push-action@master

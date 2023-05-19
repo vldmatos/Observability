@@ -1,0 +1,63 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.33530.505
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Kubernetes", "Kubernetes", "{B3051207-68F9-4B58-ADE5-C52BE2E0375A}"
+	ProjectSection(SolutionItems) = preProject
+		Kubernetes\api.yaml = Kubernetes\api.yaml
+		Kubernetes\database.yaml = Kubernetes\database.yaml
+		Kubernetes\elastic.yaml = Kubernetes\elastic.yaml
+		Kubernetes\kustomization.yaml = Kubernetes\kustomization.yaml
+		Kubernetes\manufacturing.yaml = Kubernetes\manufacturing.yaml
+		Kubernetes\messages.yaml = Kubernetes\messages.yaml
+		Kubernetes\planning.yaml = Kubernetes\planning.yaml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Files", "Files", "{2F57E0A9-6CEE-4048-AD5C-3CA7C987500D}"
+	ProjectSection(SolutionItems) = preProject
+		.dockerignore = .dockerignore
+		.gitignore = .gitignore
+		diagram.drawio = diagram.drawio
+		README.md = README.md
+		tables.sql = tables.sql
+	EndProjectSection
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Library", "Library\Library.csproj", "{EEADB080-2CA6-418B-AB50-9B1F4D2C6436}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "API", "API\API.csproj", "{3DC9AC88-EB9B-4A21-8164-567DDF1A0BA6}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Manufacturing", "Manufacturing\Manufacturing.csproj", "{DD147EAB-138C-4BD1-9CFF-2710602D7F8A}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Planning", "Planning\Planning.csproj", "{28324524-0B57-4522-BFB5-454132B98D4C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{EEADB080-2CA6-418B-AB50-9B1F4D2C6436}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EEADB080-2CA6-418B-AB50-9B1F4D2C6436}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EEADB080-2CA6-418B-AB50-9B1F4D2C6436}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EEADB080-2CA6-418B-AB50-9B1F4D2C6436}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3DC9AC88-EB9B-4A21-8164-567DDF1A0BA6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3DC9AC88-EB9B-4A21-8164-567DDF1A0BA6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3DC9AC88-EB9B-4A21-8164-567DDF1A0BA6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3DC9AC88-EB9B-4A21-8164-567DDF1A0BA6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DD147EAB-138C-4BD1-9CFF-2710602D7F8A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DD147EAB-138C-4BD1-9CFF-2710602D7F8A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DD147EAB-138C-4BD1-9CFF-2710602D7F8A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DD147EAB-138C-4BD1-9CFF-2710602D7F8A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{28324524-0B57-4522-BFB5-454132B98D4C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{28324524-0B57-4522-BFB5-454132B98D4C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{28324524-0B57-4522-BFB5-454132B98D4C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{28324524-0B57-4522-BFB5-454132B98D4C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B7BA4B2B-15B1-4717-B23F-CAC0420EB1CF}
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: manufacturing
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: manufacturing
+  template:
+    metadata:
+      labels:
+        app: manufacturing
+    spec:
+      containers:
+      - name: manufacturing
+        image: manufacturing
+        resources:
+          limits:
+            memory: "300Mi"
+            cpu: "100m"
+      imagePullSecrets:
+        - name: secret-azure-registry
+      nodeSelector:
+        node-group: application
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: manufacturing-service
+  namespace: observability
+spec:
+  selector: 
+    app: manufacturing
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:    
+    kubernetes.io/ingress.class: nginx    
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  name: manufacturing-ingress
+  namespace: observability
+spec:
+  rules:
+  - host: manufacturing.binesty.net
+    http:
+      paths:
+      - path: /hangfire
+        pathType: Prefix
+        backend:
+          service:
+            name: manufacturing-service
+            port:
+              number: 80
+---

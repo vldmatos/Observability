@@ -1,0 +1,535 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: elastic-secret
+  namespace: observability
+type: Opaque
+data:
+  ELASTICSEARCH_HOST: ZWxhc3RpY3NlYXJjaC5vYnNlcnZhYmlsaXR5
+  ELASTICSEARCH_PORT: OTIwMA==
+  KIBANA_HOST: a2liYW5hLXNlcnZpY2Uub2JzZXJ2YWJpbGl0eQ==
+  ELASTIC_USERNAME: ZWxhc3RpYw==
+  ELASTIC_PASSWORD: cGFzc0AxMjM=
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch-cluster
+  namespace: observability
+spec:
+  serviceName: elasticsearch
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      nodeSelector:
+        node-group: application
+      containers:
+      - name: elasticsearch
+        image: docker.elastic.co/elasticsearch/elasticsearch:7.17.9
+        imagePullPolicy: IfNotPresent
+        resources:
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+            requests:
+              cpu: 500m
+              memory: 2Gi
+        ports:
+        - containerPort: 9200
+          name: rest
+          protocol: TCP
+        - containerPort: 9300
+          name: inter-node
+          protocol: TCP
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+        env:
+          - name: cluster.name
+            value: elasticsearch-cluster
+          - name: node.name
+            value: elasticsearch-cluster-0
+          - name: discovery.seed_hosts
+            value: "elasticsearch-cluster-0.observability"
+          - name: cluster.initial_master_nodes
+            value: "elasticsearch-cluster-0"
+          - name: ES_JAVA_OPTS
+            value: "-Xms512m -Xmx512m"
+          - name: ELASTIC_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: elastic-secret
+                key: ELASTIC_PASSWORD
+          - name: bootstrap.memory_lock
+            value: "false"
+          - name: xpack.security.enabled
+            value: "true"
+          - name: xpack.security.transport.ssl.enabled
+            value: "true"
+          - name: xpack.security.authc.api_key.enabled
+            value: "true"
+      initContainers:
+      - name: fix-permissions
+        image: busybox
+        imagePullPolicy: IfNotPresent
+        command: ["sh", "-c", "chown -R 1000:1000 /usr/share/elasticsearch/data"]
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+      - name: increase-vm-max-map
+        image: busybox
+        imagePullPolicy: IfNotPresent
+        command: ["sysctl", "-w", "vm.max_map_count=262144"]
+        securityContext:
+          privileged: true
+      - name: increase-fd-ulimit
+        image: busybox
+        imagePullPolicy: IfNotPresent
+        command: ["sh", "-c", "ulimit -n 65536"]
+        securityContext:
+          privileged: true
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+      labels:
+        app: elasticsearch
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "longhorn" 
+      resources:
+        requests:
+          storage: 20Gi
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: observability
+  labels:
+    app: elasticsearch
+spec:
+  selector:
+    app: elasticsearch
+  clusterIP: None
+  ports:
+    - port: 9200
+      name: rest
+    - port: 9300
+      name: inter-node
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:    
+    kubernetes.io/ingress.class: nginx    
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  name: elasticsearch-ingress
+  namespace: observability
+spec:
+  rules:
+  - host: elasticsearch.binesty.net
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: elasticsearch
+            port:
+              number: 9200
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-configmap
+  namespace: observability
+data:
+  logstash.yml: |
+    http.host: "0.0.0.0"
+    path.config: /usr/share/logstash/pipeline
+  logstash.conf: |    
+    input 
+    {
+      beats 
+      {
+        port => 5044
+        host => "0.0.0.0"
+      }
+    }
+    filter 
+    {
+      grok 
+      {
+        match => [ "message" , "%{COMBINEDAPACHELOG}+%{GREEDYDATA:extra_fields}"]
+        overwrite => [ "message" ]
+      }
+      mutate 
+      {
+        convert => ["response", "integer"]
+        convert => ["bytes", "integer"]
+        convert => ["responsetime", "float"]
+      }
+      geoip 
+      {
+        source => "clientip"
+        target => "geoip"
+        add_tag => [ "nginx-geoip" ]
+      }
+      date 
+      {
+        match => [ "timestamp" , "dd/MMM/YYYY:HH:mm:ss Z" ]
+        remove_field => [ "timestamp" ]
+      }
+      useragent 
+      {
+        source => "agent"
+      }
+    }
+    output 
+    {
+      elasticsearch 
+      {
+        hosts => [ "${ES_HOSTS}" ]
+        user => "${ELASTIC_USER}"
+        password => "${ELASTIC_PASSWORD}"  
+        #index => "logstash-%{+YYYY.MM.dd}"
+      }
+      stdout { codec => rubydebug }
+    }
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: logstash
+  name: logstash-service
+  namespace: observability
+spec:
+  ports:
+  - name: "25826"
+    port: 25826
+    targetPort: 25826
+  - name: "5044"
+    port: 5044
+    targetPort: 5044
+  selector:
+    app: logstash
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash
+  namespace: observability
+spec:
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      nodeSelector:
+        node-group: application      
+      containers:
+      - image: docker.elastic.co/logstash/logstash:7.17.9
+        imagePullPolicy: IfNotPresent
+        name: logstash
+        ports:
+        - containerPort: 25826
+        - containerPort: 5044
+        env:
+        - name: ES_HOSTS
+          value: "http://elasticsearch.observability:9200"
+        - name: ELASTIC_USER
+          valueFrom:
+            secretKeyRef:
+              name: elastic-secret
+              key: ELASTIC_USERNAME
+        - name: ELASTIC_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elastic-secret
+              key: ELASTIC_PASSWORD
+        resources:
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+          requests:
+            cpu: 200m
+            memory: 1Gi
+        volumeMounts:
+        - name: config-volume
+          mountPath: /usr/share/logstash/config
+        - name: logstash-pipeline-volume
+          mountPath: /usr/share/logstash/pipeline  
+      volumes:
+      - name: config-volume
+        configMap:
+          name: logstash-configmap
+          items:
+            - key: logstash.yml
+              path: logstash.yml
+      - name: logstash-pipeline-volume
+        configMap:
+          name: logstash-configmap
+          items:
+            - key: logstash.conf
+              path: logstash.conf
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apm-server-config
+  namespace: observability
+  labels:
+    k8s-app: apm-server
+data:
+  apm-server.yml: |-
+    apm-server:
+      host: "0.0.0.0:8200"
+
+      rum:
+        enabled: true
+        event_rate.limit: 300
+        event_rate.lru_size: 1000
+        allow_origins: ['*']
+        library_pattern: "node_modules|bower_components|~"
+        exclude_from_grouping: "^/webpack"
+        source_mapping.enabled: true
+        source_mapping.cache.expiration: 5m
+        source_mapping.index_pattern: "apm-*-sourcemap*"
+
+      frontend:
+        enabled: false
+
+    setup.template.settings:
+      index:
+        number_of_shards: 1
+        codec: best_compression
+
+    output.elasticsearch:
+      enabled: true
+      protocol: "http"
+      ssl.enabled: false
+      hosts: ["${ELASTICSEARCH_HOST:elasticsearch}:${ELASTICSEARCH_PORT:9200}"]
+      username: ${ELASTICSEARCH_USERNAME}
+      password: ${ELASTICSEARCH_PASSWORD}
+
+    setup.kibana:
+      host: '${KIBANA_HOST:kibana}:${KIBANA_PORT:5601}'
+      path: ${KIBANA_PATH}
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: apm-server
+  namespace: observability
+spec:
+  serviceName: apm-server
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apm-server
+  template:
+    metadata:
+      labels:
+        app: apm-server
+    spec:
+      nodeSelector:
+        node-group: application
+      containers:
+      - name: apm-server
+        image: docker.elastic.co/apm/apm-server:7.17.9
+        imagePullPolicy: IfNotPresent        
+        ports:
+        - containerPort: 8200
+          name: apm-port
+        env: 
+        - name: ELASTICSEARCH_HOST
+          valueFrom:
+            secretKeyRef:
+              name: elastic-secret
+              key: ELASTICSEARCH_HOST
+        - name: ELASTICSEARCH_PORT
+          valueFrom:
+            secretKeyRef:
+              name: elastic-secret
+              key: ELASTICSEARCH_PORT
+        - name: ELASTICSEARCH_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: elastic-secret
+              key: ELASTIC_USERNAME
+        - name: ELASTICSEARCH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elastic-secret
+              key: ELASTIC_PASSWORD
+        - name: KIBANA_HOST
+          valueFrom:
+            secretKeyRef:
+              name: elastic-secret
+              key: KIBANA_HOST
+        - name: KIBANA_PORT
+          value: "5601"
+        - name: KIBANA_PATH
+          value: /monitoring/ui
+        volumeMounts:
+        - name: apm-server-config
+          mountPath: /usr/share/apm-server/apm-server.yml
+          readOnly: true
+          subPath: apm-server.yml
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi
+      volumes:
+      - name: apm-server-config
+        configMap:
+          name: apm-server-config
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: apm-server
+  namespace: observability
+  labels:
+    app: apm-server
+spec:
+  ports:
+  - port: 8200
+    targetPort: 8200
+    name: http    
+  selector:
+    app: apm-server
+  type: ClusterIP
+  clusterIP: None
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:    
+    kubernetes.io/ingress.class: nginx    
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  name: apm-ingress
+  namespace: observability
+spec:
+  rules:
+  - host: apm.binesty.net
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: apm-server
+            port:
+              number: 8200
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: observability
+  labels:
+    app: kibana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      nodeSelector:
+        node-group: application
+      containers:
+      - name: kibana
+        image: docker.elastic.co/kibana/kibana:7.17.9
+        imagePullPolicy: IfNotPresent        
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 100m
+            memory: 1Gi
+        env:
+          - name: ELASTICSEARCH_URL
+            value: http://elasticsearch.observability:9200
+          - name: SERVERNAME
+            value: "kibana-service"
+          - name: ELASTICSEARCH_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: elastic-secret
+                key: ELASTIC_USERNAME
+          - name: ELASTICSEARCH_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: elastic-secret
+                key: ELASTIC_PASSWORD
+        ports:
+        - containerPort: 5601
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana-service
+  namespace: observability
+spec:
+  selector: 
+    app: kibana
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 5601
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:    
+    kubernetes.io/ingress.class: nginx    
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  name: kibana-ingress
+  namespace: observability
+spec:
+  rules:
+  - host: kibana.binesty.net
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: kibana-service
+            port:
+              number: 80
+---

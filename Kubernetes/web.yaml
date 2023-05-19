@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - name: web
+        image: web
+        resources:
+          limits:
+            memory: "300Mi"
+            cpu: "100m"
+      imagePullSecrets:
+        - name: secret-azure-registry
+      nodeSelector:
+        node-group: application
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-service
+  namespace: observability
+spec:
+  selector: 
+    app: web
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:    
+    kubernetes.io/ingress.class: nginx    
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  name: web-ingress
+  namespace: observability
+spec:
+  rules:
+  - host: web.binesty.net
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-service
+            port:
+              number: 80
+---
